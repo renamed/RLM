@@ -3,6 +3,11 @@
 
 <!-- CHANGELOG ENTRIES -->
 
+## v0.0.1-prerelease.2 (2026-04-21)
+
+- Improves Action
+Changelog file now follows Github tagging messages formatting.
+
 ## v0.0.1-prerelease.1 (2026-04-21)
 
 - fix: initial commit
