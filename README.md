@@ -17,3 +17,7 @@ The primary objectives of this project are:
 * Deep Learning Framework: PyTorch
 * Data Analysis Libraries: Pandas, NumPy
 * Data Visualization Library: Seaborn
+
+## Versioning
+
+Automatic versioning with changelog creation using .github\workflows\versioning.yml
