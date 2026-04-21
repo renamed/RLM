@@ -137,7 +137,11 @@ runs:
           echo -e "\n$MARKER" >> CHANGELOG.md
         fi
 
-        echo -e "\n## v${{ steps.versioning.outputs.new_version }} ($DATE)\n\n- ${{ steps.versioning.outputs.commit_msg }}" > new_entry.tmp
+        # Use the formatted release body for changelog entry
+        {
+          echo -e "\n## v${{ steps.versioning.outputs.new_version }} ($DATE)\n"
+          echo "${{ steps.versioning.outputs.release_body }}"
+        } > new_entry.tmp
         sed -i "/$MARKER/r new_entry.tmp" CHANGELOG.md
         rm new_entry.tmp
 
