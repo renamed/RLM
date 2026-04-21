@@ -77,16 +77,18 @@ jobs:
       - name: Update CHANGELOG.md
         run: |
           DATE=$(date +%Y-%m-%d)
-          MARKER=""
+          MARKER="<!-- CHANGELOG ENTRIES -->"
           
           if [ ! -f CHANGELOG.md ]; then
             echo -e "# CHANGELOG\n\n$MARKER" > CHANGELOG.md
           fi
           
-          if ! grep -q "$MARKER" CHANGELOG.md; then
+          # Ensure the marker exists in an existing file
+          if ! grep -qF "$MARKER" CHANGELOG.md; then
             echo -e "\n$MARKER" >> CHANGELOG.md
           fi
-
+          
+          # Insert the new entry after the marker
           echo -e "\n## v${{ steps.versioning.outputs.new_version }} ($DATE)\n\n- ${{ steps.versioning.outputs.commit_msg }}" > new_entry.tmp
           sed -i "/$MARKER/r new_entry.tmp" CHANGELOG.md
           rm new_entry.tmp
