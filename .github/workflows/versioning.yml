@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - '.github/workflows/**'
 
 jobs:
   release:
@@ -12,11 +14,57 @@ jobs:
       contents: write
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Python Semantic Release
-        uses: python-semantic-release/python-semantic-release@v10
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Manual Versioning
+        run: |
+          MAJOR_TRIGGERS=("feat!:" "fix!:")
+          MINOR_TRIGGERS=("feat:")
+          
+          CURRENT_VERSION=$(grep -m 1 'version =' pyproject.toml | cut -d '"' -f 2)
+          BASE_VERSION=$(echo $CURRENT_VERSION | cut -d '-' -f 1)
+          MAJOR=$(echo $BASE_VERSION | cut -d '.' -f 1)
+          MINOR=$(echo $BASE_VERSION | cut -d '.' -f 2)
+          PATCH=$(echo $BASE_VERSION | cut -d '.' -f 3)
+          
+          if [[ "$CURRENT_VERSION" == *"prerelease"* ]]; then
+            PRE_NUM=$(echo $CURRENT_VERSION | cut -d '.' -f 4)
+          else
+            PRE_NUM=0
+          fi
+
+          COMMIT_MSG=$(git log -1 --pretty=%B)
+          IS_MAJOR=false
+          IS_MINOR=false
+
+          for trigger in "${MAJOR_TRIGGERS[@]}"; do
+            if [[ "$COMMIT_MSG" == "$trigger"* ]]; then IS_MAJOR=true; break; fi
+          done
+
+          if [ "$IS_MAJOR" = false ]; then
+            for trigger in "${MINOR_TRIGGERS[@]}"; do
+              if [[ "$COMMIT_MSG" == "$trigger"* ]]; then IS_MINOR=true; break; fi
+            done
+          fi
+
+          if [ "$IS_MAJOR" = true ]; then
+            NEW_MAJOR=$((MAJOR + 1))
+            NEW_VERSION="${NEW_MAJOR}.0.0-prerelease.1"
+          elif [ "$IS_MINOR" = true ]; then
+            NEW_MINOR=$((MINOR + 1))
+            NEW_VERSION="${MAJOR}.${NEW_MINOR}.0-prerelease.1"
+          else
+            NEW_PRE=$((PRE_NUM + 1))
+            NEW_VERSION="${BASE_VERSION}-prerelease.${NEW_PRE}"
+          fi
+
+          sed -i "0,/version = \".*\"/s//version = \"$NEW_VERSION\"/" pyproject.toml
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add pyproject.toml
+          git commit -m "chore(release): $NEW_VERSION [skip ci]"
+          git tag v$NEW_VERSION
+          git push origin main --tags
