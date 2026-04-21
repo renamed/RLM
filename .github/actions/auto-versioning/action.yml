@@ -86,21 +86,33 @@ runs:
 
         RELEASE_TITLE="v$NEW_VERSION"
 
+        # --- Process first line ---
         FIRST_LINE=$(echo "$COMMIT_MSG" | head -1)
         if [[ "$FIRST_LINE" == *:* ]]; then
+          # Conventional commit: remove prefix and Title Case
           CLEAN_FIRST_LINE=$(echo "$FIRST_LINE" | sed -E 's/^[^:]*:[[:space:]]*//' | sed 's/\b\(.\)/\u\1/g')
         else
-          CLEAN_FIRST_LINE=$(echo "$FIRST_LINE" | sed 's/^\(.\)/\U\1/')
+          # No colon: check if it's likely a URL or special string
+          if [[ "$FIRST_LINE" =~ ^[[:space:]]*(https?://|git@|//) ]]; then
+            # Looks like a URL/SSH path, leave unchanged
+            CLEAN_FIRST_LINE="$FIRST_LINE"
+          else
+            # Normal text: capitalize first letter only
+            CLEAN_FIRST_LINE=$(echo "$FIRST_LINE" | sed 's/^\(.\)/\U\1/')
+          fi
         fi
-        
+
+        # --- Process remaining lines ---
         REST=$(echo "$COMMIT_MSG" | tail -n +2 | sed '/^$/d' | sed 's/^\(.\)/\U\1/')
-        
+
+        # Build release body
         if [ -n "$REST" ]; then
           RELEASE_BODY="- $CLEAN_FIRST_LINE"$'\n'"$REST"
         else
           RELEASE_BODY="- $CLEAN_FIRST_LINE"
         fi
 
+        # Build changelog entry (same format, with header)
         if [ -n "$REST" ]; then
           CHANGELOG_ENTRY="## v$NEW_VERSION ($(date +%Y-%m-%d))"$'\n\n'"- $CLEAN_FIRST_LINE"$'\n'"$REST"
         else
@@ -152,7 +164,7 @@ runs:
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
         git add ${{ inputs.version-file }} CHANGELOG.md
-        git commit -m "chore(release): ${{ steps.versioning.outputs.new_version }}" || echo "No changes to commit"
+        git commit -m "chore(release): ${{ steps.versioning.outputs.new_version }} [skip ci]" || echo "No changes to commit"
         git tag v${{ steps.versioning.outputs.new_version }}
         git push origin main --tags
 
@@ -163,4 +175,5 @@ runs:
       run: |
         gh release create v${{ steps.versioning.outputs.new_version }} \
           --title "${{ steps.versioning.outputs.release_title }}" \
-          --notes "${{ steps.versioning.outputs.release_body }}"
+          --notes "${{ steps.versioning.outputs.release_body }}" \
+          --prerelease
