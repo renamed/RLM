@@ -85,19 +85,18 @@ runs:
           NEW_VERSION="${BASE_VERSION}-prerelease.${NEW_PRE}"
         fi
 
-        # Build release title (just the version number)
         RELEASE_TITLE="v$NEW_VERSION"
 
-        # Build release body:
-        # - First line of commit with "- " prefix
-        # - Remaining lines (if any) as they are
-        FIRST_LINE=$(echo "$COMMIT_MSG" | head -1)
-        REST=$(echo "$COMMIT_MSG" | tail -n +2 | sed '/^$/d')  # Remove leading empty lines
-
+        # Remove prefix before colon and convert to Title Case (capitalize every word)
+        CLEAN_FIRST_LINE=$(echo "$COMMIT_MSG" | head -1 | sed -E 's/^[^:]*:[[:space:]]*//' | sed 's/\b\(.\)/\u\1/g')
+        
+        # Capitalize only first letter of each remaining line
+        REST=$(echo "$COMMIT_MSG" | tail -n +2 | sed '/^$/d' | sed 's/^\(.\)/\U\1/')
+        
         if [ -n "$REST" ]; then
-          RELEASE_BODY="- $FIRST_LINE"$'\n'"$REST"
+          RELEASE_BODY="- $CLEAN_FIRST_LINE"$'\n'"$REST"
         else
-          RELEASE_BODY="- $FIRST_LINE"
+          RELEASE_BODY="- $CLEAN_FIRST_LINE"
         fi
 
         echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
