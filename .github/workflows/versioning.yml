@@ -18,7 +18,8 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Manual Versioning
+      - name: Calculate New Version
+        id: versioning
         run: |
           MAJOR_TRIGGERS=("feat!:" "fix!:")
           MINOR_TRIGGERS=("feat:")
@@ -60,23 +61,29 @@ jobs:
             NEW_VERSION="${BASE_VERSION}-prerelease.${NEW_PRE}"
           fi
 
-          # Atualiza pyproject.toml
-          sed -i "0,/version = \".*\"/s//version = \"$NEW_VERSION\"/" pyproject.toml
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          echo "commit_msg=$COMMIT_MSG" >> $GITHUB_OUTPUT
 
-          # Atualiza CHANGELOG.md
+      - name: Update pyproject.toml
+        run: |
+          sed -i "s/version = \"${{ steps.versioning.outputs.current_version }}\"/version = \"${{ steps.versioning.outputs.new_version }}\"/" pyproject.toml
+
+      - name: Update CHANGELOG.md
+        run: |
           DATE=$(date +%Y-%m-%d)
-          NEW_ENTRY="\n## v$NEW_VERSION ($DATE)\n\n- $COMMIT_MSG"
-          
           if [ ! -f CHANGELOG.md ]; then
             echo -e "# CHANGELOG\n\n" > CHANGELOG.md
           fi
-          
-          # Insere a nova versão logo após o marcador
-          sed -i "//a $NEW_ENTRY" CHANGELOG.md
+          echo -e "\n## v${{ steps.versioning.outputs.new_version }} ($DATE)\n\n- ${{ steps.versioning.outputs.commit_msg }}" > new_entry.tmp
+          sed -i "//r new_entry.tmp" CHANGELOG.md
+          rm new_entry.tmp
 
+      - name: Commit and Push
+        run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add pyproject.toml CHANGELOG.md
-          git commit -m "chore(release): $NEW_VERSION [skip ci]"
-          git tag v$NEW_VERSION
+          git commit -m "chore(release): ${{ steps.versioning.outputs.new_version }} [skip ci]"
+          git tag v${{ steps.versioning.outputs.new_version }}
           git push origin main --tags
