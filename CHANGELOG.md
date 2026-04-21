@@ -3,6 +3,10 @@
 
 <!-- CHANGELOG ENTRIES -->
 
+## v0.0.1-prerelease.4 (2026-04-21)
+
+- chore(release): 0.0.1-prerelease.3 [skip ci]
+
 ## v0.0.1-prerelease.3 (2026-04-21)
 
 - Merge branch 'main' of https://github.com/renamed/RLM
