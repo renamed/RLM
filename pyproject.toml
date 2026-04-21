@@ -1,6 +1,6 @@
 [project]
 name = "rlm"
-version = "1.0.0"
+version = "0.0.0"
 dependencies = [
     "torch>=2.2.0",
     "pandas",
@@ -19,3 +19,4 @@ branch = "main"
 upload_to_repository = false
 
 build_command = ""
+major_on_zero = false
