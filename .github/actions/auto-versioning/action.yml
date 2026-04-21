@@ -87,10 +87,15 @@ runs:
 
         RELEASE_TITLE="v$NEW_VERSION"
 
-        # Remove prefix before colon and convert to Title Case (capitalize every word)
-        CLEAN_FIRST_LINE=$(echo "$COMMIT_MSG" | head -1 | sed -E 's/^[^:]*:[[:space:]]*//' | sed 's/\b\(.\)/\u\1/g')
+        # Process first line
+        FIRST_LINE=$(echo "$COMMIT_MSG" | head -1)
+        if [[ "$FIRST_LINE" == *:* ]]; then
+          CLEAN_FIRST_LINE=$(echo "$FIRST_LINE" | sed -E 's/^[^:]*:[[:space:]]*//' | sed 's/\b\(.\)/\u\1/g')
+        else
+          CLEAN_FIRST_LINE=$(echo "$FIRST_LINE" | sed 's/^\(.\)/\U\1/')
+        fi
         
-        # Capitalize only first letter of each remaining line
+        # Process remaining lines
         REST=$(echo "$COMMIT_MSG" | tail -n +2 | sed '/^$/d' | sed 's/^\(.\)/\U\1/')
         
         if [ -n "$REST" ]; then
