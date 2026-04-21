@@ -1,6 +1,6 @@
 [project]
 name = "rlm"
-version = "1.0.0"
+version = "0.0.1"
 dependencies = [
     "torch>=2.2.0",
     "pandas",
@@ -20,3 +20,7 @@ upload_to_repository = false
 
 build_command = ""
 major_on_zero = false
+
+# Pre-release config
+prerelease = true
+prerelease_token = "prerelease"
