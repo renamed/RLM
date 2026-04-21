@@ -95,13 +95,21 @@ runs:
           CLEAN_FIRST_LINE=$(echo "$FIRST_LINE" | sed 's/^\(.\)/\U\1/')
         fi
         
-        # Process remaining lines
+        # Process remaining lines (capitalize first letter of each line)
         REST=$(echo "$COMMIT_MSG" | tail -n +2 | sed '/^$/d' | sed 's/^\(.\)/\U\1/')
         
+        # Build release body
         if [ -n "$REST" ]; then
           RELEASE_BODY="- $CLEAN_FIRST_LINE"$'\n'"$REST"
         else
           RELEASE_BODY="- $CLEAN_FIRST_LINE"
+        fi
+
+        # Build changelog entry (same format, with header)
+        if [ -n "$REST" ]; then
+          CHANGELOG_ENTRY="## v$NEW_VERSION ($(date +%Y-%m-%d))"$'\n\n'"- $CLEAN_FIRST_LINE"$'\n'"$REST"
+        else
+          CHANGELOG_ENTRY="## v$NEW_VERSION ($(date +%Y-%m-%d))"$'\n\n'"- $CLEAN_FIRST_LINE"
         fi
 
         echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
@@ -113,8 +121,8 @@ runs:
           echo "EOF"
         } >> $GITHUB_OUTPUT
         {
-          echo "commit_msg<<EOF"
-          echo "$COMMIT_MSG"
+          echo "changelog_entry<<EOF"
+          echo "$CHANGELOG_ENTRY"
           echo "EOF"
         } >> $GITHUB_OUTPUT
 
@@ -126,7 +134,6 @@ runs:
     - name: Update CHANGELOG.md
       shell: bash
       run: |
-        DATE=$(date +%Y-%m-%d)
         MARKER="${{ inputs.changelog-marker }}"
 
         if [ ! -f CHANGELOG.md ]; then
@@ -137,11 +144,8 @@ runs:
           echo -e "\n$MARKER" >> CHANGELOG.md
         fi
 
-        # Use the formatted release body for changelog entry
-        {
-          echo -e "\n## v${{ steps.versioning.outputs.new_version }} ($DATE)\n"
-          echo "${{ steps.versioning.outputs.release_body }}"
-        } > new_entry.tmp
+        # Insert the new entry after the marker with a blank line before it
+        echo -e "\n${{ steps.versioning.outputs.changelog_entry }}" > new_entry.tmp
         sed -i "/$MARKER/r new_entry.tmp" CHANGELOG.md
         rm new_entry.tmp
 
