@@ -85,8 +85,29 @@ runs:
           NEW_VERSION="${BASE_VERSION}-prerelease.${NEW_PRE}"
         fi
 
+        # Build release title (just the version number)
+        RELEASE_TITLE="v$NEW_VERSION"
+
+        # Build release body:
+        # - First line of commit with "- " prefix
+        # - Remaining lines (if any) as they are
+        FIRST_LINE=$(echo "$COMMIT_MSG" | head -1)
+        REST=$(echo "$COMMIT_MSG" | tail -n +2 | sed '/^$/d')  # Remove leading empty lines
+
+        if [ -n "$REST" ]; then
+          RELEASE_BODY="- $FIRST_LINE"$'\n'"$REST"
+        else
+          RELEASE_BODY="- $FIRST_LINE"
+        fi
+
         echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
         echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+        echo "release_title=$RELEASE_TITLE" >> $GITHUB_OUTPUT
+        {
+          echo "release_body<<EOF"
+          echo "$RELEASE_BODY"
+          echo "EOF"
+        } >> $GITHUB_OUTPUT
         {
           echo "commit_msg<<EOF"
           echo "$COMMIT_MSG"
@@ -132,6 +153,6 @@ runs:
         GH_TOKEN: ${{ inputs.github-token }}
       run: |
         gh release create v${{ steps.versioning.outputs.new_version }} \
-          --title "v${{ steps.versioning.outputs.new_version }}" \
-          --notes "Release automatically created from tag v${{ steps.versioning.outputs.new_version }}" \
+          --title "${{ steps.versioning.outputs.release_title }}" \
+          --notes "${{ steps.versioning.outputs.release_body }}" \
           --prerelease
