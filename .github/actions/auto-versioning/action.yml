@@ -43,7 +43,6 @@ runs:
       id: versioning
       shell: bash
       run: |
-        # Convert input strings to arrays
         IFS=',' read -ra MAJOR_TRIGGERS <<< "${{ inputs.major-triggers }}"
         IFS=',' read -ra MINOR_TRIGGERS <<< "${{ inputs.minor-triggers }}"
 
@@ -87,7 +86,6 @@ runs:
 
         RELEASE_TITLE="v$NEW_VERSION"
 
-        # Process first line
         FIRST_LINE=$(echo "$COMMIT_MSG" | head -1)
         if [[ "$FIRST_LINE" == *:* ]]; then
           CLEAN_FIRST_LINE=$(echo "$FIRST_LINE" | sed -E 's/^[^:]*:[[:space:]]*//' | sed 's/\b\(.\)/\u\1/g')
@@ -95,17 +93,14 @@ runs:
           CLEAN_FIRST_LINE=$(echo "$FIRST_LINE" | sed 's/^\(.\)/\U\1/')
         fi
         
-        # Process remaining lines (capitalize first letter of each line)
         REST=$(echo "$COMMIT_MSG" | tail -n +2 | sed '/^$/d' | sed 's/^\(.\)/\U\1/')
         
-        # Build release body
         if [ -n "$REST" ]; then
           RELEASE_BODY="- $CLEAN_FIRST_LINE"$'\n'"$REST"
         else
           RELEASE_BODY="- $CLEAN_FIRST_LINE"
         fi
 
-        # Build changelog entry (same format, with header)
         if [ -n "$REST" ]; then
           CHANGELOG_ENTRY="## v$NEW_VERSION ($(date +%Y-%m-%d))"$'\n\n'"- $CLEAN_FIRST_LINE"$'\n'"$REST"
         else
@@ -137,15 +132,17 @@ runs:
         MARKER="${{ inputs.changelog-marker }}"
 
         if [ ! -f CHANGELOG.md ]; then
-          echo -e "# CHANGELOG\n\n$MARKER" > CHANGELOG.md
+          echo -e "# CHANGELOG\n\n$MARKER\n" > CHANGELOG.md
         fi
 
         if ! grep -qF "$MARKER" CHANGELOG.md; then
-          echo -e "\n$MARKER" >> CHANGELOG.md
+          echo -e "\n$MARKER\n" >> CHANGELOG.md
         fi
 
-        # Insert the new entry after the marker with a blank line before it
-        echo -e "\n${{ steps.versioning.outputs.changelog_entry }}" > new_entry.tmp
+        # Ensure blank line after marker
+        sed -i "/$MARKER/ { N; s/\n$/\n\n/; }" CHANGELOG.md
+
+        echo -e "\n${{ steps.versioning.outputs.changelog_entry }}\n" > new_entry.tmp
         sed -i "/$MARKER/r new_entry.tmp" CHANGELOG.md
         rm new_entry.tmp
 
@@ -166,5 +163,4 @@ runs:
       run: |
         gh release create v${{ steps.versioning.outputs.new_version }} \
           --title "${{ steps.versioning.outputs.release_title }}" \
-          --notes "${{ steps.versioning.outputs.release_body }}" \
-          --prerelease
+          --notes "${{ steps.versioning.outputs.release_body }}"
