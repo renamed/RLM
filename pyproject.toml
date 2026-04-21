@@ -1,6 +1,6 @@
 [project]
 name = "rlm"
-version = "1.0.0"
+version = "0.0.1"
 dependencies = [
     "torch>=2.2.0",
     "pandas",
