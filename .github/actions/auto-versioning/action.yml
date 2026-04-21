@@ -1,0 +1,137 @@
+name: 'Auto Versioning'
+description: 'Calculates the next version based on Conventional Commits, updates files, and creates a release'
+author: 'Your Name'
+
+inputs:
+  github-token:
+    description: 'GitHub token for authentication (required to create releases)'
+    required: true
+  major-triggers:
+    description: 'Commit prefixes that trigger a MAJOR bump (e.g., "feat!:", "fix!:")'
+    required: false
+    default: 'feat!:,fix!:'
+  minor-triggers:
+    description: 'Commit prefixes that trigger a MINOR bump (e.g., "feat:")'
+    required: false
+    default: 'feat:'
+  changelog-marker:
+    description: 'Marker in CHANGELOG.md where new entries will be inserted'
+    required: false
+    default: '<!-- CHANGELOG ENTRIES -->'
+  version-file:
+    description: 'Path to the file containing the version (e.g., pyproject.toml)'
+    required: false
+    default: 'pyproject.toml'
+
+outputs:
+  new-version:
+    description: 'The newly calculated version'
+    value: ${{ steps.versioning.outputs.new_version }}
+  current-version:
+    description: 'The version before the bump'
+    value: ${{ steps.versioning.outputs.current_version }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Calculate New Version
+      id: versioning
+      shell: bash
+      run: |
+        # Convert input strings to arrays
+        IFS=',' read -ra MAJOR_TRIGGERS <<< "${{ inputs.major-triggers }}"
+        IFS=',' read -ra MINOR_TRIGGERS <<< "${{ inputs.minor-triggers }}"
+
+        CURRENT_VERSION=$(grep -m 1 'version =' ${{ inputs.version-file }} | cut -d '"' -f 2)
+
+        BASE_VERSION=$(echo $CURRENT_VERSION | cut -d '-' -f 1)
+        MAJOR=$(echo $BASE_VERSION | cut -d '.' -f 1)
+        MINOR=$(echo $BASE_VERSION | cut -d '.' -f 2)
+        PATCH=$(echo $BASE_VERSION | cut -d '.' -f 3)
+
+        if [[ "$CURRENT_VERSION" == *"prerelease"* ]]; then
+          PRE_NUM=$(echo $CURRENT_VERSION | cut -d '.' -f 4)
+        else
+          PRE_NUM=0
+        fi
+
+        COMMIT_MSG=$(git log -1 --pretty=%B)
+        IS_MAJOR=false
+        IS_MINOR=false
+
+        for trigger in "${MAJOR_TRIGGERS[@]}"; do
+          if [[ "$COMMIT_MSG" == "$trigger"* ]]; then IS_MAJOR=true; break; fi
+        done
+
+        if [ "$IS_MAJOR" = false ]; then
+          for trigger in "${MINOR_TRIGGERS[@]}"; do
+            if [[ "$COMMIT_MSG" == "$trigger"* ]]; then IS_MINOR=true; break; fi
+          done
+        fi
+
+        if [ "$IS_MAJOR" = true ]; then
+          NEW_MAJOR=$((MAJOR + 1))
+          NEW_VERSION="${NEW_MAJOR}.0.0-prerelease.1"
+        elif [ "$IS_MINOR" = true ]; then
+          NEW_MINOR=$((MINOR + 1))
+          NEW_VERSION="${MAJOR}.${NEW_MINOR}.0-prerelease.1"
+        else
+          NEW_PRE=$((PRE_NUM + 1))
+          NEW_VERSION="${BASE_VERSION}-prerelease.${NEW_PRE}"
+        fi
+
+        echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+        echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+        {
+          echo "commit_msg<<EOF"
+          echo "$COMMIT_MSG"
+          echo "EOF"
+        } >> $GITHUB_OUTPUT
+
+    - name: Update version file
+      shell: bash
+      run: |
+        sed -i "s/version = \"${{ steps.versioning.outputs.current_version }}\"/version = \"${{ steps.versioning.outputs.new_version }}\"/" ${{ inputs.version-file }}
+
+    - name: Update CHANGELOG.md
+      shell: bash
+      run: |
+        DATE=$(date +%Y-%m-%d)
+        MARKER="${{ inputs.changelog-marker }}"
+
+        if [ ! -f CHANGELOG.md ]; then
+          echo -e "# CHANGELOG\n\n$MARKER" > CHANGELOG.md
+        fi
+
+        if ! grep -qF "$MARKER" CHANGELOG.md; then
+          echo -e "\n$MARKER" >> CHANGELOG.md
+        fi
+
+        echo -e "\n## v${{ steps.versioning.outputs.new_version }} ($DATE)\n\n- ${{ steps.versioning.outputs.commit_msg }}" > new_entry.tmp
+        sed -i "/$MARKER/r new_entry.tmp" CHANGELOG.md
+        rm new_entry.tmp
+
+    - name: Commit and Push
+      shell: bash
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git add ${{ inputs.version-file }} CHANGELOG.md
+        git commit -m "chore(release): ${{ steps.versioning.outputs.new_version }} [skip ci]" || echo "No changes to commit"
+        git tag v${{ steps.versioning.outputs.new_version }}
+        git push origin main --tags
+
+    - name: Create GitHub Release
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: |
+        gh release create v${{ steps.versioning.outputs.new_version }} \
+          --title "v${{ steps.versioning.outputs.new_version }}" \
+          --notes "Release automatically created from tag v${{ steps.versioning.outputs.new_version }}" \
+          --prerelease
