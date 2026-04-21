@@ -5,7 +5,8 @@ dependencies = [
     "torch>=2.11.0,<3.0.0",
     "pandas>=3.0.1,<4.0.0",    
     "numpy>=2.4.0,<3.0.0",
-    "seaborn>=0.13.2,<1.0.0"
+    "seaborn>=0.13.2,<1.0.0",
+    "keras==3.14.0"
 ]
 
 [build-system]
