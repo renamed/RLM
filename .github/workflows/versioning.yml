@@ -24,13 +24,14 @@ jobs:
         run: |
           MAJOR_TRIGGERS=("feat!:" "fix!:")
           MINOR_TRIGGERS=("feat:")
-          
+
           CURRENT_VERSION=$(grep -m 1 'version =' pyproject.toml | cut -d '"' -f 2)
+
           BASE_VERSION=$(echo $CURRENT_VERSION | cut -d '-' -f 1)
           MAJOR=$(echo $BASE_VERSION | cut -d '.' -f 1)
           MINOR=$(echo $BASE_VERSION | cut -d '.' -f 2)
           PATCH=$(echo $BASE_VERSION | cut -d '.' -f 3)
-          
+
           if [[ "$CURRENT_VERSION" == *"prerelease"* ]]; then
             PRE_NUM=$(echo $CURRENT_VERSION | cut -d '.' -f 4)
           else
@@ -78,17 +79,15 @@ jobs:
         run: |
           DATE=$(date +%Y-%m-%d)
           MARKER="<!-- CHANGELOG ENTRIES -->"
-          
+
           if [ ! -f CHANGELOG.md ]; then
             echo -e "# CHANGELOG\n\n$MARKER" > CHANGELOG.md
           fi
-          
-          # Ensure the marker exists in an existing file
+
           if ! grep -qF "$MARKER" CHANGELOG.md; then
             echo -e "\n$MARKER" >> CHANGELOG.md
           fi
-          
-          # Insert the new entry after the marker
+
           echo -e "\n## v${{ steps.versioning.outputs.new_version }} ($DATE)\n\n- ${{ steps.versioning.outputs.commit_msg }}" > new_entry.tmp
           sed -i "/$MARKER/r new_entry.tmp" CHANGELOG.md
           rm new_entry.tmp
@@ -101,3 +100,12 @@ jobs:
           git commit -m "chore(release): ${{ steps.versioning.outputs.new_version }} [skip ci]" || echo "No changes to commit"
           git tag v${{ steps.versioning.outputs.new_version }}
           git push origin main --tags
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v${{ steps.versioning.outputs.new_version }} \
+            --title "v${{ steps.versioning.outputs.new_version }}" \
+            --notes "Release automatically created from tag v${{ steps.versioning.outputs.new_version }}" \
+            --prerelease
