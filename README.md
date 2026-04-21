@@ -20,4 +20,4 @@ The primary objectives of this project are:
 
 ## Versioning
 
-Automatic versioning with changelog creation using .github\workflows\versioning.yml
+Automatic versioning with changelog creation using .github\workflows\versioning.yml.
