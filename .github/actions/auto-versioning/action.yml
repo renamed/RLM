@@ -1,57 +1,26 @@
 name: 'Auto Versioning'
-description: 'Calculates the next version based on Conventional Commits, updates files, and creates a release'
-author: 'Your Name'
+description: 'Calculates next version, updates CHANGELOG and creates release'
 
 inputs:
   github-token:
-    description: 'GitHub token for authentication (required to create releases)'
+    description: 'GitHub token'
     required: true
-  major-triggers:
-    description: 'Commit prefixes that trigger a MAJOR bump (e.g., "feat!:", "fix!:")'
-    required: false
-    default: 'feat!:,fix!:'
-  minor-triggers:
-    description: 'Commit prefixes that trigger a MINOR bump (e.g., "feat:")'
-    required: false
-    default: 'feat:'
-  changelog-marker:
-    description: 'Marker in CHANGELOG.md where new entries will be inserted'
-    required: false
-    default: '<!-- CHANGELOG ENTRIES -->'
-  version-file:
-    description: 'Path to the file containing the version (e.g., pyproject.toml)'
-    required: false
-    default: 'pyproject.toml'
-
-outputs:
-  new-version:
-    description: 'The newly calculated version'
-    value: ${{ steps.versioning.outputs.new_version }}
-  current-version:
-    description: 'The version before the bump'
-    value: ${{ steps.versioning.outputs.current_version }}
 
 runs:
   using: 'composite'
   steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-
     - name: Calculate New Version
       id: versioning
       shell: bash
       run: |
-        IFS=',' read -ra MAJOR_TRIGGERS <<< "${{ inputs.major-triggers }}"
-        IFS=',' read -ra MINOR_TRIGGERS <<< "${{ inputs.minor-triggers }}"
+        MAJOR_TRIGGERS=("feat!:" "fix!:")
+        MINOR_TRIGGERS=("feat:")
 
-        CURRENT_VERSION=$(grep -m 1 'version =' ${{ inputs.version-file }} | cut -d '"' -f 2)
+        CURRENT_VERSION=$(grep -m 1 'version =' pyproject.toml | cut -d '"' -f 2)
 
         BASE_VERSION=$(echo $CURRENT_VERSION | cut -d '-' -f 1)
         MAJOR=$(echo $BASE_VERSION | cut -d '.' -f 1)
         MINOR=$(echo $BASE_VERSION | cut -d '.' -f 2)
-        PATCH=$(echo $BASE_VERSION | cut -d '.' -f 3)
 
         if [[ "$CURRENT_VERSION" == *"prerelease"* ]]; then
           PRE_NUM=$(echo $CURRENT_VERSION | cut -d '.' -f 4)
@@ -84,44 +53,28 @@ runs:
           NEW_VERSION="${BASE_VERSION}-prerelease.${NEW_PRE}"
         fi
 
-        RELEASE_TITLE="v$NEW_VERSION"
-
-        # --- Process first line ---
+        # Processa primeira linha
         FIRST_LINE=$(echo "$COMMIT_MSG" | head -1)
         if [[ "$FIRST_LINE" == *:* ]]; then
-          # Conventional commit: remove prefix and Title Case
           CLEAN_FIRST_LINE=$(echo "$FIRST_LINE" | sed -E 's/^[^:]*:[[:space:]]*//' | sed 's/\b\(.\)/\u\1/g')
         else
-          # No colon: check if it's likely a URL or special string
-          if [[ "$FIRST_LINE" =~ ^[[:space:]]*(https?://|git@|//) ]]; then
-            # Looks like a URL/SSH path, leave unchanged
-            CLEAN_FIRST_LINE="$FIRST_LINE"
-          else
-            # Normal text: capitalize first letter only
-            CLEAN_FIRST_LINE=$(echo "$FIRST_LINE" | sed 's/^\(.\)/\U\1/')
-          fi
+          CLEAN_FIRST_LINE=$(echo "$FIRST_LINE" | sed 's/^\(.\)/\U\1/')
         fi
 
-        # --- Process remaining lines ---
+        # Restante do corpo
         REST=$(echo "$COMMIT_MSG" | tail -n +2 | sed '/^$/d' | sed 's/^\(.\)/\U\1/')
 
-        # Build release body
         if [ -n "$REST" ]; then
           RELEASE_BODY="- $CLEAN_FIRST_LINE"$'\n'"$REST"
+          CHANGELOG_ENTRY="## v$NEW_VERSION ($(date +%Y-%m-%d))"$'\n'"- $CLEAN_FIRST_LINE"$'\n'"$REST"
         else
           RELEASE_BODY="- $CLEAN_FIRST_LINE"
-        fi
-
-        # Build changelog entry (same format, with header)
-        if [ -n "$REST" ]; then
-          CHANGELOG_ENTRY="## v$NEW_VERSION ($(date +%Y-%m-%d))"$'\n\n'"- $CLEAN_FIRST_LINE"$'\n'"$REST"
-        else
-          CHANGELOG_ENTRY="## v$NEW_VERSION ($(date +%Y-%m-%d))"$'\n\n'"- $CLEAN_FIRST_LINE"
+          CHANGELOG_ENTRY="## v$NEW_VERSION ($(date +%Y-%m-%d))"$'\n'"- $CLEAN_FIRST_LINE"
         fi
 
         echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
         echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
-        echo "release_title=$RELEASE_TITLE" >> $GITHUB_OUTPUT
+        echo "release_title=v$NEW_VERSION" >> $GITHUB_OUTPUT
         {
           echo "release_body<<EOF"
           echo "$RELEASE_BODY"
@@ -136,26 +89,18 @@ runs:
     - name: Update version file
       shell: bash
       run: |
-        sed -i "s/version = \"${{ steps.versioning.outputs.current_version }}\"/version = \"${{ steps.versioning.outputs.new_version }}\"/" ${{ inputs.version-file }}
+        sed -i "s/version = \"${{ steps.versioning.outputs.current_version }}\"/version = \"${{ steps.versioning.outputs.new_version }}\"/" pyproject.toml
 
     - name: Update CHANGELOG.md
       shell: bash
       run: |
-        MARKER="${{ inputs.changelog-marker }}"
-
         if [ ! -f CHANGELOG.md ]; then
-          echo -e "# CHANGELOG\n\n$MARKER\n" > CHANGELOG.md
+          echo -e "# CHANGELOG\n" > CHANGELOG.md
         fi
 
-        if ! grep -qF "$MARKER" CHANGELOG.md; then
-          echo -e "\n$MARKER\n" >> CHANGELOG.md
-        fi
-
-        # Ensure blank line after marker
-        sed -i "/$MARKER/ { N; s/\n$/\n\n/; }" CHANGELOG.md
-
-        echo -e "\n${{ steps.versioning.outputs.changelog_entry }}\n" > new_entry.tmp
-        sed -i "/$MARKER/r new_entry.tmp" CHANGELOG.md
+        # Insert new entry at the top, after the "# CHANGELOG" line
+        echo -e "\n${{ steps.versioning.outputs.changelog_entry }}" > new_entry.tmp
+        sed -i "/^# CHANGELOG/r new_entry.tmp" CHANGELOG.md
         rm new_entry.tmp
 
     - name: Commit and Push
@@ -163,7 +108,7 @@ runs:
       run: |
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
-        git add ${{ inputs.version-file }} CHANGELOG.md
+        git add pyproject.toml CHANGELOG.md
         git commit -m "chore(release): ${{ steps.versioning.outputs.new_version }}" || echo "No changes to commit"
         git tag v${{ steps.versioning.outputs.new_version }}
         git push origin main --tags
