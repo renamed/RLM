@@ -1,0 +1,25 @@
+name: Test Versioning
+
+on:
+  push:
+    paths:
+      - '.github/actions/auto-versioning/action.yml'
+      - '.github/workflows/versioning.yml'
+      - 'tests/test-versioning.sh'
+  pull_request:
+    paths:
+      - '.github/actions/auto-versioning/action.yml'
+      - '.github/workflows/versioning.yml'
+      - 'tests/test-versioning.sh'
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run versioning tests
+        shell: bash
+        run: bash tests/test-versioning.sh

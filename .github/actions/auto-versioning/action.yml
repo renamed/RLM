@@ -9,38 +9,70 @@ inputs:
 runs:
   using: 'composite'
   steps:
-    - name: Calculate New Version
-      id: versioning
+    - name: Read current version
+      id: current
       shell: bash
       run: |
-        MAJOR_TRIGGERS=("feat!:" "fix!:")
-        MINOR_TRIGGERS=("feat:")
-
         CURRENT_VERSION=$(grep -m 1 'version =' pyproject.toml | cut -d '"' -f 2)
-
-        BASE_VERSION=$(echo $CURRENT_VERSION | sed 's/[a-z].*//' | sed 's/\.dev.*//' | cut -d '-' -f 1)
+        BASE_VERSION=$(echo $CURRENT_VERSION | cut -d '-' -f 1)
         MAJOR=$(echo $BASE_VERSION | cut -d '.' -f 1)
         MINOR=$(echo $BASE_VERSION | cut -d '.' -f 2)
+        
+        echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+        echo "base_version=$BASE_VERSION" >> $GITHUB_OUTPUT
+        echo "major=$MAJOR" >> $GITHUB_OUTPUT
+        echo "minor=$MINOR" >> $GITHUB_OUTPUT
 
-        if [[ "$CURRENT_VERSION" == *".dev"* ]]; then
-          PRE_NUM=$(echo $CURRENT_VERSION | sed 's/.*\.dev//')
-        elif [[ "$CURRENT_VERSION" == *"a"* && "$CURRENT_VERSION" != *"alpha"* ]]; then
-          PRE_NUM=$(echo $CURRENT_VERSION | sed 's/.*a//')
-        elif [[ "$CURRENT_VERSION" == *"b"* ]]; then
-          PRE_NUM=$(echo $CURRENT_VERSION | sed 's/.*b//')
-        elif [[ "$CURRENT_VERSION" == *"rc"* ]]; then
-          PRE_NUM=$(echo $CURRENT_VERSION | sed 's/.*rc//')
-        else
-          PRE_NUM=0
-        fi
-
+    - name: Read version stage
+      id: stage
+      shell: bash
+      run: |
         if [ -f VERSION_STAGE.md ]; then
           STAGE=$(grep -v '^#' VERSION_STAGE.md | grep -v '^$' | head -1 | tr -d ' ')
         else
           STAGE=""
         fi
+        echo "stage=$STAGE" >> $GITHUB_OUTPUT
 
+    - name: Detect pre-release number
+      id: prenum
+      shell: bash
+      run: |
+        CURRENT_VERSION="${{ steps.current.outputs.current_version }}"
+        
+        if [[ "$CURRENT_VERSION" == *"-dev."* ]]; then
+          PRE_NUM=$(echo $CURRENT_VERSION | sed 's/.*-dev\.//')
+        elif [[ "$CURRENT_VERSION" == *"-alpha."* ]]; then
+          PRE_NUM=$(echo $CURRENT_VERSION | sed 's/.*-alpha\.//')
+        elif [[ "$CURRENT_VERSION" == *"-beta."* ]]; then
+          PRE_NUM=$(echo $CURRENT_VERSION | sed 's/.*-beta\.//')
+        elif [[ "$CURRENT_VERSION" == *"-rc."* ]]; then
+          PRE_NUM=$(echo $CURRENT_VERSION | sed 's/.*-rc\.//')
+        else
+          PRE_NUM=0
+        fi
+        
+        echo "pre_num=$PRE_NUM" >> $GITHUB_OUTPUT
+
+    - name: Get commit message
+      id: commit
+      shell: bash
+      run: |
         COMMIT_MSG=$(git log -1 --pretty=%B)
+        {
+          echo "message<<EOF"
+          echo "$COMMIT_MSG"
+          echo "EOF"
+        } >> $GITHUB_OUTPUT
+
+    - name: Calculate bump type
+      id: bump
+      shell: bash
+      run: |
+        MAJOR_TRIGGERS=("feat!:" "fix!:")
+        MINOR_TRIGGERS=("feat:")
+        COMMIT_MSG="${{ steps.commit.outputs.message }}"
+        
         IS_MAJOR=false
         IS_MINOR=false
 
@@ -53,6 +85,21 @@ runs:
             if [[ "$COMMIT_MSG" == "$trigger"* ]]; then IS_MINOR=true; break; fi
           done
         fi
+
+        echo "is_major=$IS_MAJOR" >> $GITHUB_OUTPUT
+        echo "is_minor=$IS_MINOR" >> $GITHUB_OUTPUT
+
+    - name: Build new version
+      id: versioning
+      shell: bash
+      run: |
+        MAJOR=${{ steps.current.outputs.major }}
+        MINOR=${{ steps.current.outputs.minor }}
+        BASE_VERSION=${{ steps.current.outputs.base_version }}
+        PRE_NUM=${{ steps.prenum.outputs.pre_num }}
+        STAGE="${{ steps.stage.outputs.stage }}"
+        IS_MAJOR=${{ steps.bump.outputs.is_major }}
+        IS_MINOR=${{ steps.bump.outputs.is_minor }}
 
         if [ "$IS_MAJOR" = true ]; then
           NEW_MAJOR=$((MAJOR + 1))
@@ -67,27 +114,20 @@ runs:
         fi
 
         if [ -n "$STAGE" ]; then
-          case "$STAGE" in
-            dev)
-              NEW_VERSION="${BASE_VERSION}.dev${NEW_PRE}"
-              ;;
-            alpha)
-              NEW_VERSION="${BASE_VERSION}a${NEW_PRE}"
-              ;;
-            beta)
-              NEW_VERSION="${BASE_VERSION}b${NEW_PRE}"
-              ;;
-            rc)
-              NEW_VERSION="${BASE_VERSION}rc${NEW_PRE}"
-              ;;
-            *)
-              NEW_VERSION="${BASE_VERSION}"
-              ;;
-          esac
+          NEW_VERSION="${BASE_VERSION}-${STAGE}.${NEW_PRE}"
         else
           NEW_VERSION="${BASE_VERSION}"
         fi
 
+        echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+
+    - name: Format release body
+      id: release
+      shell: bash
+      run: |
+        COMMIT_MSG="${{ steps.commit.outputs.message }}"
+        NEW_VERSION="${{ steps.versioning.outputs.new_version }}"
+        
         FIRST_LINE=$(echo "$COMMIT_MSG" | head -1)
         if [[ "$FIRST_LINE" == *:* ]]; then
           CLEAN_FIRST_LINE=$(echo "$FIRST_LINE" | sed -E 's/^[^:]*:[[:space:]]*//' | sed 's/\b\(.\)/\u\1/g')
@@ -105,8 +145,6 @@ runs:
           CHANGELOG_ENTRY="## v$NEW_VERSION ($(date +%Y-%m-%d))"$'\n'"- $CLEAN_FIRST_LINE"
         fi
 
-        echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
-        echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
         echo "release_title=v$NEW_VERSION" >> $GITHUB_OUTPUT
         {
           echo "release_body<<EOF"
@@ -122,7 +160,7 @@ runs:
     - name: Update version file
       shell: bash
       run: |
-        sed -i "s/version = \"${{ steps.versioning.outputs.current_version }}\"/version = \"${{ steps.versioning.outputs.new_version }}\"/" pyproject.toml
+        sed -i "s/version = \"${{ steps.current.outputs.current_version }}\"/version = \"${{ steps.versioning.outputs.new_version }}\"/" pyproject.toml
 
     - name: Update CHANGELOG.md
       shell: bash
@@ -131,7 +169,7 @@ runs:
           echo -e "# CHANGELOG\n" > CHANGELOG.md
         fi
 
-        echo -e "\n${{ steps.versioning.outputs.changelog_entry }}" > new_entry.tmp
+        echo -e "\n${{ steps.release.outputs.changelog_entry }}" > new_entry.tmp
         sed -i "/^# CHANGELOG/r new_entry.tmp" CHANGELOG.md
         rm new_entry.tmp
 
@@ -150,19 +188,15 @@ runs:
       env:
         GH_TOKEN: ${{ inputs.github-token }}
       run: |
-        if [ -f VERSION_STAGE.md ]; then
-          STAGE=$(grep -v '^#' VERSION_STAGE.md | grep -v '^$' | head -1 | tr -d ' ')
-        else
-          STAGE=""
-        fi
+        STAGE="${{ steps.stage.outputs.stage }}"
         
         if [ -n "$STAGE" ]; then
           gh release create v${{ steps.versioning.outputs.new_version }} \
-            --title "${{ steps.versioning.outputs.release_title }}" \
-            --notes "${{ steps.versioning.outputs.release_body }}" \
+            --title "${{ steps.release.outputs.release_title }}" \
+            --notes "${{ steps.release.outputs.release_body }}" \
             --prerelease
         else
           gh release create v${{ steps.versioning.outputs.new_version }} \
-            --title "${{ steps.versioning.outputs.release_title }}" \
-            --notes "${{ steps.versioning.outputs.release_body }}"
+            --title "${{ steps.release.outputs.release_title }}" \
+            --notes "${{ steps.release.outputs.release_body }}"
         fi
