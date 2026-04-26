@@ -1,0 +1,18 @@
+name: 'Python Unit Tests'
+description: 'Runs python unit tests for the project'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install dependencies
+      shell: bash
+      run: pip install -e .
+
+    - name: Run unit tests
+      shell: bash
+      run: python -m unittest discover -s tests -p "*Tests.py"

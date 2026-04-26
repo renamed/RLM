@@ -18,6 +18,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Run Python Unit Tests
+        uses: ./.github/actions/unit-tests
+
       - name: Run Auto Versioning Action
         uses: ./.github/actions/auto-versioning
         with:
