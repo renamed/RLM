@@ -6,6 +6,7 @@ on:
       - main
     paths-ignore:
       - '.github/**'
+      - 'tests/**'
 
 jobs:
   release:
@@ -22,6 +23,7 @@ jobs:
         uses: ./.github/actions/unit-tests
 
       - name: Run Auto Versioning Action
+        if: success()
         uses: ./.github/actions/auto-versioning
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}

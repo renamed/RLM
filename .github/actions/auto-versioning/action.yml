@@ -39,16 +39,26 @@ runs:
       shell: bash
       run: |
         CURRENT_VERSION="${{ steps.current.outputs.current_version }}"
+        STAGE="${{ steps.stage.outputs.stage }}"
         
         if [[ "$CURRENT_VERSION" == *"-dev."* ]]; then
+          CURRENT_STAGE="dev"
           PRE_NUM=$(echo $CURRENT_VERSION | sed 's/.*-dev\.//')
         elif [[ "$CURRENT_VERSION" == *"-alpha."* ]]; then
+          CURRENT_STAGE="alpha"
           PRE_NUM=$(echo $CURRENT_VERSION | sed 's/.*-alpha\.//')
         elif [[ "$CURRENT_VERSION" == *"-beta."* ]]; then
+          CURRENT_STAGE="beta"
           PRE_NUM=$(echo $CURRENT_VERSION | sed 's/.*-beta\.//')
         elif [[ "$CURRENT_VERSION" == *"-rc."* ]]; then
+          CURRENT_STAGE="rc"
           PRE_NUM=$(echo $CURRENT_VERSION | sed 's/.*-rc\.//')
         else
+          CURRENT_STAGE=""
+          PRE_NUM=0
+        fi
+        
+        if [ "$STAGE" != "$CURRENT_STAGE" ]; then
           PRE_NUM=0
         fi
         
@@ -58,7 +68,7 @@ runs:
       id: commit
       shell: bash
       run: |
-        COMMIT_MSG=$(git log -1 --pretty=%B)
+        COMMIT_MSG=$(git log --grep="^chore(release):" --invert-grep -1 --pretty=%B)
         {
           echo "message<<EOF"
           echo "$COMMIT_MSG"
