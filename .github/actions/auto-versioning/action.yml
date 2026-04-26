@@ -18,14 +18,26 @@ runs:
 
         CURRENT_VERSION=$(grep -m 1 'version =' pyproject.toml | cut -d '"' -f 2)
 
-        BASE_VERSION=$(echo $CURRENT_VERSION | cut -d '-' -f 1)
+        BASE_VERSION=$(echo $CURRENT_VERSION | sed 's/[a-z].*//' | sed 's/\.dev.*//' | cut -d '-' -f 1)
         MAJOR=$(echo $BASE_VERSION | cut -d '.' -f 1)
         MINOR=$(echo $BASE_VERSION | cut -d '.' -f 2)
 
-        if [[ "$CURRENT_VERSION" == *"prerelease"* ]]; then
-          PRE_NUM=$(echo $CURRENT_VERSION | cut -d '.' -f 4)
+        if [[ "$CURRENT_VERSION" == *".dev"* ]]; then
+          PRE_NUM=$(echo $CURRENT_VERSION | sed 's/.*\.dev//')
+        elif [[ "$CURRENT_VERSION" == *"a"* && "$CURRENT_VERSION" != *"alpha"* ]]; then
+          PRE_NUM=$(echo $CURRENT_VERSION | sed 's/.*a//')
+        elif [[ "$CURRENT_VERSION" == *"b"* ]]; then
+          PRE_NUM=$(echo $CURRENT_VERSION | sed 's/.*b//')
+        elif [[ "$CURRENT_VERSION" == *"rc"* ]]; then
+          PRE_NUM=$(echo $CURRENT_VERSION | sed 's/.*rc//')
         else
           PRE_NUM=0
+        fi
+
+        if [ -f VERSION_STAGE.md ]; then
+          STAGE=$(grep -v '^#' VERSION_STAGE.md | grep -v '^$' | head -1 | tr -d ' ')
+        else
+          STAGE=""
         fi
 
         COMMIT_MSG=$(git log -1 --pretty=%B)
@@ -44,16 +56,38 @@ runs:
 
         if [ "$IS_MAJOR" = true ]; then
           NEW_MAJOR=$((MAJOR + 1))
-          NEW_VERSION="${NEW_MAJOR}.0.0-prerelease.1"
+          BASE_VERSION="${NEW_MAJOR}.0.0"
+          NEW_PRE=1
         elif [ "$IS_MINOR" = true ]; then
           NEW_MINOR=$((MINOR + 1))
-          NEW_VERSION="${MAJOR}.${NEW_MINOR}.0-prerelease.1"
+          BASE_VERSION="${MAJOR}.${NEW_MINOR}.0"
+          NEW_PRE=1
         else
           NEW_PRE=$((PRE_NUM + 1))
-          NEW_VERSION="${BASE_VERSION}-prerelease.${NEW_PRE}"
         fi
 
-        # Processa primeira linha
+        if [ -n "$STAGE" ]; then
+          case "$STAGE" in
+            dev)
+              NEW_VERSION="${BASE_VERSION}.dev${NEW_PRE}"
+              ;;
+            alpha)
+              NEW_VERSION="${BASE_VERSION}a${NEW_PRE}"
+              ;;
+            beta)
+              NEW_VERSION="${BASE_VERSION}b${NEW_PRE}"
+              ;;
+            rc)
+              NEW_VERSION="${BASE_VERSION}rc${NEW_PRE}"
+              ;;
+            *)
+              NEW_VERSION="${BASE_VERSION}"
+              ;;
+          esac
+        else
+          NEW_VERSION="${BASE_VERSION}"
+        fi
+
         FIRST_LINE=$(echo "$COMMIT_MSG" | head -1)
         if [[ "$FIRST_LINE" == *:* ]]; then
           CLEAN_FIRST_LINE=$(echo "$FIRST_LINE" | sed -E 's/^[^:]*:[[:space:]]*//' | sed 's/\b\(.\)/\u\1/g')
@@ -61,7 +95,6 @@ runs:
           CLEAN_FIRST_LINE=$(echo "$FIRST_LINE" | sed 's/^\(.\)/\U\1/')
         fi
 
-        # Restante do corpo
         REST=$(echo "$COMMIT_MSG" | tail -n +2 | sed '/^$/d' | sed 's/^\(.\)/\U\1/')
 
         if [ -n "$REST" ]; then
@@ -98,7 +131,6 @@ runs:
           echo -e "# CHANGELOG\n" > CHANGELOG.md
         fi
 
-        # Insert new entry at the top, after the "# CHANGELOG" line
         echo -e "\n${{ steps.versioning.outputs.changelog_entry }}" > new_entry.tmp
         sed -i "/^# CHANGELOG/r new_entry.tmp" CHANGELOG.md
         rm new_entry.tmp
@@ -118,7 +150,19 @@ runs:
       env:
         GH_TOKEN: ${{ inputs.github-token }}
       run: |
-        gh release create v${{ steps.versioning.outputs.new_version }} \
-          --title "${{ steps.versioning.outputs.release_title }}" \
-          --notes "${{ steps.versioning.outputs.release_body }}" \
-          --prerelease
+        if [ -f VERSION_STAGE.md ]; then
+          STAGE=$(grep -v '^#' VERSION_STAGE.md | grep -v '^$' | head -1 | tr -d ' ')
+        else
+          STAGE=""
+        fi
+        
+        if [ -n "$STAGE" ]; then
+          gh release create v${{ steps.versioning.outputs.new_version }} \
+            --title "${{ steps.versioning.outputs.release_title }}" \
+            --notes "${{ steps.versioning.outputs.release_body }}" \
+            --prerelease
+        else
+          gh release create v${{ steps.versioning.outputs.new_version }} \
+            --title "${{ steps.versioning.outputs.release_title }}" \
+            --notes "${{ steps.versioning.outputs.release_body }}"
+        fi
