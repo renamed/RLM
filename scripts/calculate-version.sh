@@ -1,13 +1,13 @@
 #!/bin/bash
 
-GREEN='\033[0;32m'
-RED='\033[0;31m'
-NC='\033[0m'
-
 PASS=0
 FAIL=0
+RESULTS_FILE="test-results.csv"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Clean results file
+echo "status,commit,current,stage,expected,got" > "$RESULTS_FILE"
 
 assert_version() {
   local commit_msg="$1"
@@ -15,13 +15,15 @@ assert_version() {
   local stage="$3"
   local expected="$4"
   
-  result=$(bash "$SCRIPT_DIR/scripts/calculate-version.sh" "$commit_msg" "$current_version" "$stage")
+  result=$(bash "$SCRIPT_DIR/../scripts/calculate-version.sh" "$commit_msg" "$current_version" "$stage")
   
   if [ "$result" = "$expected" ]; then
-    echo -e "${GREEN}✓${NC} $commit_msg | $current_version | $stage → $result"
+    echo "✓ $commit_msg | $current_version | $stage → $result"
+    echo "pass,$commit_msg,$current_version,$stage,$expected,$result" >> "$RESULTS_FILE"
     PASS=$((PASS + 1))
   else
-    echo -e "${RED}✗${NC} $commit_msg | $current_version | $stage → got $result, expected $expected"
+    echo "✗ $commit_msg | $current_version | $stage → got $result, expected $expected"
+    echo "fail,$commit_msg,$current_version,$stage,$expected,$result" >> "$RESULTS_FILE"
     FAIL=$((FAIL + 1))
   fi
 }
@@ -42,4 +44,11 @@ assert_version "fix: final bug" "0.1.0-rc.2" "" "0.1.0"
 assert_version "feat: after release" "0.1.0" "dev" "0.2.0-dev.1"
 
 echo ""
-echo "Results: ${GREEN}$PASS passed${NC}, ${RED}$FAIL failed${NC}"
+echo "Results: $PASS passed, $FAIL failed"
+
+echo "pass=$PASS" >> "$GITHUB_OUTPUT"
+echo "fail=$FAIL" >> "$GITHUB_OUTPUT"
+
+if [ "$FAIL" -gt 0 ]; then
+  exit 1
+fi

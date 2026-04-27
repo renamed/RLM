@@ -103,32 +103,10 @@ runs:
       id: versioning
       shell: bash
       run: |
-        MAJOR=${{ steps.current.outputs.major }}
-        MINOR=${{ steps.current.outputs.minor }}
-        BASE_VERSION=${{ steps.current.outputs.base_version }}
-        PRE_NUM=${{ steps.prenum.outputs.pre_num }}
-        STAGE="${{ steps.stage.outputs.stage }}"
-        IS_MAJOR=${{ steps.bump.outputs.is_major }}
-        IS_MINOR=${{ steps.bump.outputs.is_minor }}
-
-        if [ "$IS_MAJOR" = true ]; then
-          NEW_MAJOR=$((MAJOR + 1))
-          BASE_VERSION="${NEW_MAJOR}.0.0"
-          NEW_PRE=1
-        elif [ "$IS_MINOR" = true ]; then
-          NEW_MINOR=$((MINOR + 1))
-          BASE_VERSION="${MAJOR}.${NEW_MINOR}.0"
-          NEW_PRE=1
-        else
-          NEW_PRE=$((PRE_NUM + 1))
-        fi
-
-        if [ -n "$STAGE" ]; then
-          NEW_VERSION="${BASE_VERSION}-${STAGE}.${NEW_PRE}"
-        else
-          NEW_VERSION="${BASE_VERSION}"
-        fi
-
+        NEW_VERSION=$(bash scripts/calculate-version.sh \
+          "${{ steps.commit.outputs.message }}" \
+          "${{ steps.current.outputs.current_version }}" \
+          "${{ steps.stage.outputs.stage }}")
         echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
 
     - name: Format release body
