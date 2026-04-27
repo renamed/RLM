@@ -6,11 +6,13 @@ on:
       - '.github/actions/auto-versioning/action.yml'
       - '.github/workflows/versioning.yml'
       - 'tests/test-versioning.sh'
+      - 'scripts/calculate-version.sh'
   pull_request:
     paths:
       - '.github/actions/auto-versioning/action.yml'
       - '.github/workflows/versioning.yml'
       - 'tests/test-versioning.sh'
+      - 'scripts/calculate-version.sh'
   workflow_dispatch:
 
 jobs:
@@ -21,29 +23,5 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Run versioning tests
-        id: test
         shell: bash
         run: bash tests/test-versioning.sh
-
-      - name: Write summary
-        if: always()
-        shell: bash
-        run: |
-          echo "## Versioning Test Results" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          
-          # Read CSV, skip header, build table
-          {
-            echo "| Status | Commit | Current | Stage | Result |"
-            echo "|--------|--------|---------|-------|--------|"
-            tail -n +2 test-results.csv | while IFS=',' read -r status commit current stage expected got; do
-              if [ "$status" = "pass" ]; then
-                echo "| ✅ | $commit | $current | $stage | $got |"
-              else
-                echo "| ❌ | $commit | $current | $stage | got \`$got\`, expected \`$expected\` |"
-              fi
-            done
-          } >> "$GITHUB_STEP_SUMMARY"
-          
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "**${{ steps.test.outputs.pass }} passed**, **${{ steps.test.outputs.fail }} failed**" >> "$GITHUB_STEP_SUMMARY"

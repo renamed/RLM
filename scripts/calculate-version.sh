@@ -1,54 +1,65 @@
 #!/bin/bash
+# Usage: bash scripts/calculate-version.sh <commit_msg> <current_version> <stage>
 
-PASS=0
-FAIL=0
-RESULTS_FILE="test-results.csv"
+COMMIT_MSG="$1"
+CURRENT_VERSION="$2"
+STAGE="$3"
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+BASE_VERSION=$(echo $CURRENT_VERSION | cut -d '-' -f 1)
+MAJOR=$(echo $BASE_VERSION | cut -d '.' -f 1)
+MINOR=$(echo $BASE_VERSION | cut -d '.' -f 2)
 
-# Clean results file
-echo "status,commit,current,stage,expected,got" > "$RESULTS_FILE"
+if [[ "$CURRENT_VERSION" == *"-dev."* ]]; then
+  CURRENT_STAGE="dev"
+  PRE_NUM=$(echo $CURRENT_VERSION | sed 's/.*-dev\.//')
+elif [[ "$CURRENT_VERSION" == *"-alpha."* ]]; then
+  CURRENT_STAGE="alpha"
+  PRE_NUM=$(echo $CURRENT_VERSION | sed 's/.*-alpha\.//')
+elif [[ "$CURRENT_VERSION" == *"-beta."* ]]; then
+  CURRENT_STAGE="beta"
+  PRE_NUM=$(echo $CURRENT_VERSION | sed 's/.*-beta\.//')
+elif [[ "$CURRENT_VERSION" == *"-rc."* ]]; then
+  CURRENT_STAGE="rc"
+  PRE_NUM=$(echo $CURRENT_VERSION | sed 's/.*-rc\.//')
+else
+  CURRENT_STAGE=""
+  PRE_NUM=0
+fi
 
-assert_version() {
-  local commit_msg="$1"
-  local current_version="$2"
-  local stage="$3"
-  local expected="$4"
-  
-  result=$(bash "$SCRIPT_DIR/../scripts/calculate-version.sh" "$commit_msg" "$current_version" "$stage")
-  
-  if [ "$result" = "$expected" ]; then
-    echo "✓ $commit_msg | $current_version | $stage → $result"
-    echo "pass,$commit_msg,$current_version,$stage,$expected,$result" >> "$RESULTS_FILE"
-    PASS=$((PASS + 1))
-  else
-    echo "✗ $commit_msg | $current_version | $stage → got $result, expected $expected"
-    echo "fail,$commit_msg,$current_version,$stage,$expected,$result" >> "$RESULTS_FILE"
-    FAIL=$((FAIL + 1))
-  fi
-}
+if [ "$STAGE" != "$CURRENT_STAGE" ]; then
+  PRE_NUM=0
+fi
 
-echo "Running versioning tests..."
-echo ""
+MAJOR_TRIGGERS=("feat!:" "fix!:")
+MINOR_TRIGGERS=("feat:")
 
-assert_version "docs: initial commit" "0.0.1" "dev" "0.0.1-dev.1"
-assert_version "fix: bug fix" "0.0.1-dev.1" "dev" "0.0.1-dev.2"
-assert_version "feat: add feature" "0.0.1-dev.5" "dev" "0.1.0-dev.1"
-assert_version "fix!: breaking change" "0.1.0-dev.3" "dev" "1.0.0-dev.1"
-assert_version "feat: new feature" "0.0.1" "alpha" "0.1.0-alpha.1"
-assert_version "docs: update docs" "0.1.0-alpha.1" "alpha" "0.1.0-alpha.2"
-assert_version "fix: bug" "0.1.0-alpha.3" "beta" "0.1.0-beta.1"
-assert_version "fix: critical" "0.1.0-beta.2" "rc" "0.1.0-rc.1"
-assert_version "chore: cleanup" "0.1.0-rc.1" "rc" "0.1.0-rc.2"
-assert_version "fix: final bug" "0.1.0-rc.2" "" "0.1.0"
-assert_version "feat: after release" "0.1.0" "dev" "0.2.0-dev.1"
+IS_MAJOR=false
+IS_MINOR=false
 
-echo ""
-echo "Results: $PASS passed, $FAIL failed"
+for trigger in "${MAJOR_TRIGGERS[@]}"; do
+  if [[ "$COMMIT_MSG" == "$trigger"* ]]; then IS_MAJOR=true; break; fi
+done
 
-echo "pass=$PASS" >> "$GITHUB_OUTPUT"
-echo "fail=$FAIL" >> "$GITHUB_OUTPUT"
+if [ "$IS_MAJOR" = false ]; then
+  for trigger in "${MINOR_TRIGGERS[@]}"; do
+    if [[ "$COMMIT_MSG" == "$trigger"* ]]; then IS_MINOR=true; break; fi
+  done
+fi
 
-if [ "$FAIL" -gt 0 ]; then
-  exit 1
+if [ "$IS_MAJOR" = true ]; then
+  NEW_MAJOR=$((MAJOR + 1))
+  BASE_VERSION="${NEW_MAJOR}.0.0"
+  NEW_PRE=1
+elif [ "$IS_MINOR" = true ]; then
+  NEW_MINOR=$((MINOR + 1))
+  BASE_VERSION="${MAJOR}.${NEW_MINOR}.0"
+  NEW_PRE=1
+else
+  NEW_PRE=$((PRE_NUM + 1))
+fi
+
+if [ -n "$STAGE" ]; then
+  echo "${BASE_VERSION}-${STAGE}.${NEW_PRE}"
+else
+  echo "${BASE_VERSION}"
 fi
