@@ -15,4 +15,4 @@ runs:
 
     - name: Run unit tests
       shell: bash
-      run: python -m unittest discover -s tests -p "*Tests.py"
+      run: python -m unittest discover -s tests -p "**/*Tests.py"
