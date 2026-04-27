@@ -11,8 +11,10 @@ runs:
 
     - name: Install dependencies
       shell: bash
+      env:
+        PIP_EXTRA_INDEX_URL: https://download.pytorch.org/whl/cpu
       run: pip install -e .
 
     - name: Run unit tests
       shell: bash
-      run: python -m unittest discover -s tests -p "*Tests.py"
+      run: python -m unittest discover -s tests -t .
